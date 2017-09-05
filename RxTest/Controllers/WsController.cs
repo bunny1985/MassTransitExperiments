@@ -1,24 +1,29 @@
-﻿using Newtonsoft.Json;
+﻿using BusDomain.Commnads;
+using BusDomain.Identities;
+using EventFlow;
+using Newtonsoft.Json;
 using RxTest.Infrastructure.Websocket;
 using System.Net;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 using System.Web.Http;
 using System.Web.WebSockets;
+using WebSocketHandling;
 
 namespace RxTest.Controllers
 {
     public class WsController : ApiController
     {
         private static TestWebSocketHandler _webSocketHandler;
+        private readonly ICommandBus _commandBus;
+        private readonly IMessageDispatcher _messageDipatcher;
 
-        public WsController()
+        public WsController(ICommandBus commandBus, IMessageDispatcher messageDipatcher)
         {
-            if (_webSocketHandler == null)
-            {
-                _webSocketHandler = new TestWebSocketHandler("WSNAME");
-            }
+            _messageDipatcher = messageDipatcher;
+            _commandBus = commandBus;
         }
 
         public async Task<HttpResponseMessage> Get()
@@ -39,11 +44,9 @@ namespace RxTest.Controllers
             });
         }
 
-        public IHttpActionResult Publish(MsgModel msg)
+        public async Task<IHttpActionResult> Publish(MsgModel msg)
         {
-            var json = JsonConvert.SerializeObject(msg);
-
-            _webSocketHandler.Publish(json);
+            await _commandBus.PublishAsync(new PublishMessageCommand(BasicIdentity.New, msg.msg), CancellationToken.None);
             return Ok();
         }
 
@@ -53,10 +56,11 @@ namespace RxTest.Controllers
             var sessionCookie = context.Cookies["SessionId"];
 
             if (sessionCookie != null)
-
             {
-                var wsHandler = new TestWebSocketHandler(sessionCookie.Value);
-                await wsHandler.ProcessWebSocketRequestAsync(context);
+                var handler = await _messageDipatcher.JoinClientAsync("Zenek");
+                await handler.ProcessWebSocketRequestAsync(context);
+                //var wsHandler = new TestWebSocketHandler(sessionCookie.Value);
+                //await wsHandler.ProcessWebSocketRequestAsync(context);
             }
         }
     }

@@ -1,8 +1,12 @@
-﻿using bb.bus;
+﻿using Confluent.Kafka;
+using Confluent.Kafka.Serialization;
 using MassTransit;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
+using System.Net;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,54 +15,36 @@ namespace BB.Bus.Test
     [TestFixture]
     public class TestClass
     {
-        public class TestMsg : Messages.Command
+        private class GuidSerializer : ISerializer<Guid>
         {
-            public TestMsg() : base("Dupa")
+            private readonly StringSerializer _stringSerializer;
+
+            public GuidSerializer()
             {
+                _stringSerializer = new StringSerializer(Encoding.UTF8);
             }
 
-            public string Msg { get; set; }
-        }
-
-        public class ConsoleLogEventStore : IEventsStore
-        {
-            public Task StoreAsync(object obj)
+            public byte[] Serialize(Guid data)
             {
-                var str = JsonConvert.SerializeObject(obj);
-                System.Console.WriteLine(str);
-                return Task.CompletedTask;
+                return _stringSerializer.Serialize(data.ToString());
             }
         }
 
-        public class UpdateCustomerConsumer :
-                IConsumer<TestMsg>
+        [TestCase]
+        public async Task KafkaConnectExperiment()
         {
-            public async Task Consume(ConsumeContext<TestMsg> context)
+            var config = new Dictionary<string, object> { { "bootstrap.servers", "kafkaserver" } };
+            var producer = new Producer<Guid, string>(config, new GuidSerializer(), new StringSerializer(Encoding.UTF8));
+            EventHandler<Error> handler = (s, e) =>
             {
-                Console.WriteLine("ODEBRANO");
-            }
-        }
+                System.Console.WriteLine(s);
+                System.Console.WriteLine(e);
+                Assert.Fail();
+            };
+            producer.OnError += handler;
 
-        [Test]
-        public async Task BusFullIntegrationTest()
-        {
-            var bus = MassTransit.Bus.Factory.CreateUsingRabitMqOnLocalhost("admin", "admin", (cfg, host) =>
-            {
-                cfg.ReceiveEndpoint(host, e => e.Consumer<UpdateCustomerConsumer>());
-            });
-            bus.RegisterEventsStore(new ConsoleLogEventStore());
-            await bus.StartAsync();
-
-            for (int i = 0; i < 10; i++)
-            {
-                await bus.Publish(new TestMsg { CorrelationId = i.ToString(), Msg = "ALE JAJAJA" + i });
-            }
-
-            Thread.Sleep(1000);
-
-            await bus.StopAsync();
-
-            Assert.Pass("Your first passing test");
+            var deliveryReport = await producer.ProduceAsync("DupaTopic", Guid.NewGuid(), "SomeText");
+            System.Console.WriteLine("OK");
         }
     }
 }

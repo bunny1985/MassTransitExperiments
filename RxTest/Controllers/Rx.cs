@@ -18,6 +18,7 @@ namespace RxTest.Controllers
 
         public string msg { get; set; }
         public string date { get; set; }
+        public string to { get; set; }
     }
 
     [RoutePrefix("rx")]
@@ -27,6 +28,7 @@ namespace RxTest.Controllers
 
         [HttpGet]
         [Route("subscribe")]
+        [Authorize]
         public async Task<HttpResponseMessage> Subscribe(HttpRequestMessage request)
         {
             var response = request.CreateResponse();
@@ -64,6 +66,21 @@ namespace RxTest.Controllers
         [Route("msg")]
         public async Task<IHttpActionResult> Push(MsgModel model)
         {
+            if (model.to != null)
+            {
+                var client = clients[model.to];
+                try
+                {
+                    await WriteEventToStreamAsync(Guid.NewGuid(), "push", JsonConvert.SerializeObject(model), client);
+                }
+                catch (Exception)
+                {
+                    Stream ignore;
+                    clients.TryRemove(model.to, out ignore);
+                }
+                return Ok();
+            }
+
             foreach (var clientPair in clients)
             {
                 var client = clientPair.Value;

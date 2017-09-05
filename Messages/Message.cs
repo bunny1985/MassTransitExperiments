@@ -1,5 +1,4 @@
-﻿using MassTransit;
-using System;
+﻿using System;
 
 namespace BB.Bus.Messages
 {
